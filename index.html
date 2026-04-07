@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dog Breed Quiz App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        #app-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        h1 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .score-board {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .image-container {
+            height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        #dog-image {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            display: none; /* Hidden until loaded */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        #options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        button {
+            padding: 12px;
+            font-size: 1em;
+            border: none;
+            border-radius: 6px;
+            background-color: #3498db;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #message {
+            margin-top: 20px;
+            font-size: 1.1em;
+            font-weight: bold;
+            height: 24px; /* Keeps layout from jumping */
+        }
+        .loader {
+            font-style: italic;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <h1>Guess the Breed! 🐶</h1>
+    
+    <div class="score-board">
+        Score: <span id="score">0</span> / <span id="total">0</span>
+    </div>
+
+    <div class="image-container">
+        <div id="loader" class="loader">Fetching a good boy...</div>
+        <img id="dog-image" src="" alt="Guess this dog breed">
+    </div>
+
+    <div id="options">
+        </div>
+
+    <div id="message"></div>
+</div>
+
+<script>
+    let allBreeds = [];
+    let usedBreeds = new Set();
+    let currentCorrectBreed = "";
+    let score = 0;
+    let total = 0;
+
+    // 1. Initialize the app by fetching the master list of breeds
+    async function init() {
+        try {
+            const res = await fetch('https://dog.ceo/api/breeds/list/all');
+            const data = await res.json();
+            allBreeds = Object.keys(data.message);
+            loadNextQuestion();
+        } catch (error) {
+            document.getElementById('message').textContent = "Error loading breeds. Are you connected to the internet?";
+        }
+    }
+
+    // 2. Load the next question
+    async function loadNextQuestion() {
+        // Reset UI for the new question
+        document.getElementById('message').textContent = "";
+        document.getElementById('options').innerHTML = "";
+        document.getElementById('dog-image').style.display = "none";
+        document.getElementById('loader').style.display = "block";
+
+        // Find breeds we haven't asked about yet
+        const availableBreeds = allBreeds.filter(breed => !usedBreeds.has(breed));
+        
+        if (availableBreeds.length === 0) {
+            document.getElementById('loader').style.display = "none";
+            document.getElementById('message').textContent = "Wow! You've guessed every breed. Game Over!";
+            document.getElementById('message').style.color = "blue";
+            return;
+        }
+
+        // Pick a random correct breed from the remaining available breeds
+        const correctIndex = Math.floor(Math.random() * availableBreeds.length);
+        currentCorrectBreed = availableBreeds[correctIndex];
+        
+        // Add it to our "asked" list so it never shows up as a correct answer again
+        usedBreeds.add(currentCorrectBreed);
+
+        try {
+            // Fetch a random image for the correct breed
+            const imgRes = await fetch(`https://dog.ceo/api/breed/${currentCorrectBreed}/images/random`);
+            const imgData = await imgRes.json();
+            const imageUrl = imgData.message;
+
+            // Generate 3 random WRONG breeds
+            let options = [currentCorrectBreed];
+            while (options.length < 4) {
+                const randomBreed = allBreeds[Math.floor(Math.random() * allBreeds.length)];
+                // Ensure we don't have duplicate options
+                if (!options.includes(randomBreed)) {
+                    options.push(randomBreed);
+                }
+            }
+
+            // Shuffle the 4 options so the correct answer isn't always first
+            options.sort(() => Math.random() - 0.5);
+
+            // Update the UI
+            document.getElementById('loader').style.display = "none";
+            const imgElement = document.getElementById('dog-image');
+            imgElement.src = imageUrl;
+            imgElement.style.display = "block";
+
+            // Create buttons for each option
+            const optionsContainer = document.getElementById('options');
+            options.forEach(breed => {
+                const btn = document.createElement('button');
+                // Capitalize the first letter for nicer formatting
+                btn.textContent = breed.charAt(0).toUpperCase() + breed.slice(1);
+                btn.onclick = () => checkAnswer(breed, btn);
+                optionsContainer.appendChild(btn);
+            });
+
+        } catch (error) {
+            document.getElementById('message').textContent = "Failed to load image. Retrying...";
+            setTimeout(loadNextQuestion, 1500);
+        }
+    }
+
+    // 3. Handle the user's guess
+    function checkAnswer(selectedBreed) {
+        total++;
+        document.getElementById('total').textContent = total;
+        
+        // Disable all buttons so the user can't click multiple times
+        const buttons = document.querySelectorAll('#options button');
+        buttons.forEach(btn => btn.disabled = true);
+
+        const messageEl = document.getElementById('message');
+
+        if (selectedBreed === currentCorrectBreed) {
+            score++;
+            document.getElementById('score').textContent = score;
+            messageEl.textContent = "Correct! 🎉";
+            messageEl.style.color = "green";
+        } else {
+            // Format the correct breed name for the error message
+            const formattedBreed = currentCorrectBreed.charAt(0).toUpperCase() + currentCorrectBreed.slice(1);
+            messageEl.textContent = `Wrong! It was a ${formattedBreed}.`;
+            messageEl.style.color = "red";
+        }
+
+        // Wait 2 seconds before loading the next question
+        setTimeout(loadNextQuestion, 2000);
+    }
+
+    // Start the app
+    init();
+</script>
+
+</body>
+</html>
